@@ -6,30 +6,22 @@
 //
 
 import UIKit
+import CoreData
 
-class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
+class ViewController: UIViewController {
     
     var alertController = UIAlertController()
     
     @IBOutlet weak var tableView: UITableView!
     
-    var data = [String]()
+    //CoreDatadan çekiyoruz.
+    var data = [NSManagedObject]()
     
     override func viewDidLoad() {
         super.viewDidLoad()
         tableView.delegate = self
         tableView.dataSource = self
-    }
-    
-    
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return data.count
-    }
-    
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "defualtCell", for: indexPath)
-        cell.textLabel?.text = data[indexPath.row]
-        return cell
+        
     }
     
     @IBAction func didRemoveBarButtonItemTapped(_ sender:UIBarButtonItem) {
@@ -37,19 +29,27 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
                      massage: "Listeyi Silmek İstedinize Emin Misiniz?",
                      defualtButtonTitle: "Evet",
                      cancelButtonTitle: "Hayır") { _ in
-            self.data.removeAll()
-            self.tableView.reloadData()
             
+            let appDelegate = UIApplication.shared.delegate as? AppDelegate
+            
+            let managedObjectContext = appDelegate?.persistentContainer.viewContext
+            
+            for item in self.data {
+                managedObjectContext?.delete(item)
+            }
+            try? managedObjectContext?.save()
+            self.fetch()
+            
+            //self.data.removeAll()
+            //self.tableView.reloadData()
         }
     }
     
     @IBAction func didAddBarButtonItem (_ sender: UIBarButtonItem) {
         //Func - AddAlert
-        presentAlert()
-        
+        presentAddAlert()
     }
-    
-    func presentAlert() {
+    func presentAddAlert() {
         /*
          let alertController = UIAlertController(title: "Yeni Ekleme",
          message: nil,
@@ -68,7 +68,6 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
          self.presentWarningAlert()
          }
          }
-         
          let alertButton = UIAlertAction(title: "Vazgeç", style: .cancel)
          
          alertController.addTextField()
@@ -85,8 +84,21 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
             let textController = self.alertController.textFields?.first?.text
             
             if textController != ""{
-                self.data.append((textController)!)
-                self.tableView.reloadData()
+                //self.data.append((textController)!)
+                
+                let appDelegate = UIApplication.shared.delegate as? AppDelegate
+                
+                let managedObjectContext = appDelegate?.persistentContainer.viewContext
+                
+                let entity = NSEntityDescription.entity(forEntityName: "ListItem", in: managedObjectContext!)
+                let listItem = NSManagedObject(entity: entity!, insertInto: managedObjectContext)
+                
+                listItem.setValue(textController, forKey: "title")
+                
+                try? managedObjectContext?.save()
+                
+                self.fetch()
+                //self.tableView.reloadData() ----> Eski
             }else {
                 //Func - WarningAlert
                 self.presentWarningAlert()
@@ -105,8 +117,6 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
         popHap.addAction(alertButton)
         present(popHap, animated: true)
     }
-    
-    
     // MARK: Func - Present Alert
     func presentAlert (title: String?,
                        massage:String?,
@@ -117,8 +127,8 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
                        defualtButtonHandler: ((UIAlertAction) -> Void)? = nil) {
         
         alertController = UIAlertController(title: title,
-                                   message: massage,
-                                       preferredStyle: preferredStyle)
+                                            message: massage,
+                                            preferredStyle: preferredStyle)
         
         if defualtButtonTitle != nil {
             let defualtButton = UIAlertAction(title: defualtButtonTitle, style: .default, handler: defualtButtonHandler)
@@ -140,8 +150,20 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
         
     }
     
+    func fetch() {
+        let appDelegate = UIApplication.shared.delegate as? AppDelegate
+        let managedObjectContext = appDelegate?.persistentContainer.viewContext
+        
+        let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "ListItem")
+        
+        data = try! managedObjectContext!.fetch(fetchRequest)
+        
+        tableView.reloadData()
+    }
+    
+    
     /*
-     //MARK: Cancel Alert
+     //MARK: Cancel Alert NOT USED
      func cancelDel() -> UIAlertAction {
      return UIAlertAction(title: "Vazgeç", style: .cancel)
      
@@ -152,6 +174,76 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
      return UIAlertController(title: "Yeni Ekleme", message: nil, preferredStyle: .)
      }
      */
+}
+
+// MARK: Extension
+// Herhangi bir class türetmeden ona yeni özellikler eklememizi sağlıyor.
+extension ViewController: UITableViewDelegate, UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return data.count
+    }
     
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "defualtCell", for: indexPath)
+        let listItem = data[indexPath.row]
+        cell.textLabel?.text = listItem.value(forKey: "title") as? String
+        return cell
+    }
+    //MARK: KONU ANLATIM(SWİPE ACTİON)
+    /*
+     Bu işlem sayesinde yandan kaydırarak elemanlar çıkartabiliyoruz. Yandaki elemanlarla oluşturduğumuz cell(Hücre)yi silebiliyor ve düzenleyebiliyoruz.
+     */
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let deleteAction = UIContextualAction(style: .normal, title: "Sil") { _, _, _ in
+            //self.data.remove(at: indexPath.row) ----> Eski Kod
+            
+            let appDelegate = UIApplication.shared.delegate as? AppDelegate
+            let managedObjectContext = appDelegate?.persistentContainer.viewContext
+            
+            managedObjectContext?.delete(self.data[indexPath.row])
+            
+            try? managedObjectContext?.save()
+            
+            //tableView.reloadData()---> ESKİ KOD
+            self.fetch()
+            
+        }
+        // SystemRed --> Normal bir renktir herhangi bir uygulamaya bağlı bir şey değildir.
+        deleteAction.backgroundColor = .systemRed
+        let editAction = UIContextualAction(style: .normal, title: "Düzenle") { _, _, _ in
+            // Yukarıda yazmış olduğumuz kodu aktif hale getirmişizdir.
+            self.presentAlert(title:"Elemanı Düzenle ",
+                              massage: nil,
+                              defualtButtonTitle: "Düzenle",
+                              cancelButtonTitle: "Vazgeç",
+                              isTextFieldAvailable: true,
+                              defualtButtonHandler: { _ in
+                let textController = self.alertController.textFields?.first?.text
+                
+                if textController != ""{
+                    //self.data[indexPath.row] = textController!
+                    
+                    let appDelegate = UIApplication.shared.delegate as? AppDelegate
+                    let managedObjectContext = appDelegate?.persistentContainer.viewContext
+                    
+                    self.data[indexPath.row].setValue(textController, forKey: "title")
+                    
+                    if managedObjectContext!.hasChanges {
+                        try? managedObjectContext?.save()
+                    }
+                    
+                    
+                    
+                    self.tableView.reloadData()
+                }else {
+                    //Func - WarningAlert
+                    self.presentWarningAlert()
+                }
+            } )
+        }
+        //Fonksiyonun döndürmede kullandığımız alan dönüşlü fonksiyon için oluşturulmuştur.
+        let config = UISwipeActionsConfiguration(actions: [deleteAction, editAction])
+        return config
+    }
 }
 
